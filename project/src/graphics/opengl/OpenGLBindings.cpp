@@ -764,14 +764,22 @@ namespace lime {
 
 	void lime_gl_clear_depth (float depth) {
 
-		glClearDepth (depth);
+		#if defined(ANDROID) || defined(IPHONE) || defined(APPLETV)
+        glClearDepthf (depth);
+        #else
+        glClearDepth (depth);
+        #endif
 
 	}
 
 
 	HL_PRIM void HL_NAME(hl_gl_clear_depth) (float depth) {
 
-		glClearDepth (depth);
+		#if defined(ANDROID) || defined(IPHONE) || defined(APPLETV)
+        glClearDepthf (depth);
+        #else
+        glClearDepth (depth);
+        #endif
 
 	}
 
