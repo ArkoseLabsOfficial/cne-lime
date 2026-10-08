@@ -16,6 +16,21 @@
 
 	<application ::foreach ANDROID_APPLICATION::::if ((value != null) && (value != ""))::::key::="::value::" ::end::::end::>
 
+		<!--
+			Only include this if org.haxe.lime.StorageProvider exists in your Android sources.
+			If you do not ship StorageProvider.java, remove this block.
+		-->
+		<provider
+			android:name="org.haxe.lime.StorageProvider"
+			android:authorities="::APP_PACKAGE::.lime.storageprovider"
+			android:exported="true"
+			android:grantUriPermissions="true"
+			android:permission="android.permission.MANAGE_DOCUMENTS">
+			<intent-filter>
+				<action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+			</intent-filter>
+		</provider>
+
 		::foreach ANDROID_APPLICATION_CHILDREN::::__current__::
 		::end::
 
