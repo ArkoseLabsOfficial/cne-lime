@@ -55,7 +55,7 @@ jobs:
       - name: Rebuild Lime
         run: |
           haxelib run lime rebuild hxcpp
-          haxelib run lime rebuild android -eval -nocolor -release -v -j2
+          haxelib run lime rebuild android -eval -nocolor -release -j2
 
       - name: Upload Artifact (ndll/Android)
         uses: actions/upload-artifact@v7.0.0

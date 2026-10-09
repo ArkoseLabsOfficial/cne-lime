@@ -37,6 +37,10 @@ public class GameActivity extends SDLActivity {
 
 	private static AssetManager assetManager;
 	private static List<Extension> extensions;
+
+	// Used by the SDL2-compatible Android FileDialog bridge.
+	private static List<FileDialog> filedialogs;
+
 	private static DisplayMetrics metrics;
 	private static DisplayCutout displayCutout;
 	private static Vibrator vibrator;
@@ -53,6 +57,51 @@ public class GameActivity extends SDLActivity {
 		{
 			deviceOrientationListener.call1("onOrientationChanged", deviceOrientation);
 		}
+
+	}
+
+
+	public static double getDisplayXDPI () {
+
+		if (metrics == null) {
+
+			metrics = Extension.mainContext.getResources ().getDisplayMetrics ();
+
+		}
+
+		return metrics.xdpi;
+
+	}
+
+
+	public static int[] getDisplaySafeAreaInsets () {
+
+		if (displayCutout == null) {
+
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+
+				WindowInsets windowInsets = ((GameActivity)Extension.mainContext).getWindow().getDecorView().getRootWindowInsets();
+
+				if (windowInsets != null) {
+
+					displayCutout = windowInsets.getDisplayCutout();
+
+				}
+			}
+		}
+
+		int[] result = {0, 0, 0, 0};
+
+		if (displayCutout != null) {
+
+			result[0] = displayCutout.getSafeInsetLeft();
+			result[1] = displayCutout.getSafeInsetTop();
+			result[2] = displayCutout.getSafeInsetRight();
+			result[3] = displayCutout.getSafeInsetBottom();
+
+		}
+
+		return result;
 
 	}
 
@@ -83,11 +132,26 @@ public class GameActivity extends SDLActivity {
 
 	@Override protected void onActivityResult (int requestCode, int resultCode, Intent data) {
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			if (!extension.onActivityResult (requestCode, resultCode, data)) {
+			for (Extension extension : extensions) {
 
-				return;
+				if (!extension.onActivityResult (requestCode, resultCode, data)) {
+
+					return;
+
+				}
+
+			}
+
+		}
+
+		// Route Android file-dialog results to Lime FileDialog instances.
+		if (filedialogs != null) {
+
+			for (FileDialog fileDialog : filedialogs) {
+
+				fileDialog.onActivityResult (requestCode, resultCode, data);
 
 			}
 
@@ -100,11 +164,15 @@ public class GameActivity extends SDLActivity {
 
 	@Override public void onBackPressed () {
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			if (!extension.onBackPressed ()) {
+			for (Extension extension : extensions) {
 
-				return;
+				if (!extension.onBackPressed ()) {
+
+					return;
+
+				}
 
 			}
 
@@ -112,6 +180,25 @@ public class GameActivity extends SDLActivity {
 
 		super.onBackPressed ();
 
+	}
+
+
+	/**
+		Creates a Java-side FileDialog and registers it with GameActivity so that
+		Android activity results can be forwarded back to Haxe.
+	**/
+	public static FileDialog creatFileDialog(final HaxeObject haxeObject)
+	{
+		FileDialog fileDialog = new FileDialog(haxeObject);
+
+		if (filedialogs == null)
+		{
+			filedialogs = new ArrayList<FileDialog> ();
+		}
+
+		filedialogs.add(fileDialog);
+
+		return fileDialog;
 	}
 
 
@@ -191,7 +278,7 @@ public class GameActivity extends SDLActivity {
 					break;
 
 				case "never":
-					getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
+					getWindow().getAttributes().layoutInDisplay_cutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
 					break;
 
 				case "shortEdges":
@@ -218,9 +305,24 @@ public class GameActivity extends SDLActivity {
 
 		}
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onCreate (state);
+			for (Extension extension : extensions) {
+
+				extension.onCreate (state);
+
+			}
+
+		}
+
+		// Forward creation to existing Java-side FileDialog instances.
+		if (filedialogs != null) {
+
+			for (FileDialog fileDialog : filedialogs) {
+
+				fileDialog.onCreate (state);
+
+			}
 
 		}
 
@@ -229,9 +331,26 @@ public class GameActivity extends SDLActivity {
 
 	@Override protected void onDestroy () {
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onDestroy ();
+			for (Extension extension : extensions) {
+
+				extension.onDestroy ();
+
+			}
+
+		}
+
+		// Clean up Java-side FileDialog instances.
+		if (filedialogs != null) {
+
+			for (FileDialog fileDialog : filedialogs) {
+
+				fileDialog.onDestroy ();
+
+			}
+
+			filedialogs.clear();
 
 		}
 
@@ -244,9 +363,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onLowMemory ();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onLowMemory ();
+			for (Extension extension : extensions) {
+
+				extension.onLowMemory ();
+
+			}
 
 		}
 
@@ -255,9 +378,13 @@ public class GameActivity extends SDLActivity {
 
 	@Override protected void onNewIntent (final Intent intent) {
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onNewIntent (intent);
+			for (Extension extension : extensions) {
+
+				extension.onNewIntent (intent);
+
+			}
 
 		}
 
@@ -278,9 +405,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onPause ();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onPause ();
+			for (Extension extension : extensions) {
+
+				extension.onPause ();
+
+			}
 
 		}
 
@@ -290,11 +421,15 @@ public class GameActivity extends SDLActivity {
 	::if (ANDROID_TARGET_SDK_VERSION >= 23)::
 	@Override public void onRequestPermissionsResult (int requestCode, String permissions[], int[] grantResults) {
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			if (!extension.onRequestPermissionsResult (requestCode, permissions, grantResults)) {
+			for (Extension extension : extensions) {
 
-				return;
+				if (!extension.onRequestPermissionsResult (requestCode, permissions, grantResults)) {
+
+					return;
+
+				}
 
 			}
 
@@ -310,9 +445,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onRestart ();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onRestart ();
+			for (Extension extension : extensions) {
+
+				extension.onRestart ();
+
+			}
 
 		}
 
@@ -325,9 +464,13 @@ public class GameActivity extends SDLActivity {
 
 		orientationListener.enable();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onResume ();
+			for (Extension extension : extensions) {
+
+				extension.onResume ();
+
+			}
 
 		}
 
@@ -338,9 +481,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onRestoreInstanceState (savedState);
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onRestoreInstanceState (savedState);
+			for (Extension extension : extensions) {
+
+				extension.onRestoreInstanceState (savedState);
+
+			}
 
 		}
 
@@ -351,9 +498,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onSaveInstanceState (outState);
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onSaveInstanceState (outState);
+			for (Extension extension : extensions) {
+
+				extension.onSaveInstanceState (outState);
+
+			}
 
 		}
 
@@ -364,9 +515,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onStart ();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onStart ();
+			for (Extension extension : extensions) {
+
+				extension.onStart ();
+
+			}
 
 		}
 
@@ -377,9 +532,13 @@ public class GameActivity extends SDLActivity {
 
 		super.onStop ();
 
-		for (Extension extension : extensions) {
+		if (extensions != null) {
 
-			extension.onStop ();
+			for (Extension extension : extensions) {
+
+				extension.onStop ();
+
+			}
 
 		}
 
@@ -393,9 +552,13 @@ public class GameActivity extends SDLActivity {
 
 			super.onTrimMemory (level);
 
-			for (Extension extension : extensions) {
+			if (extensions != null) {
 
-				extension.onTrimMemory (level);
+				for (Extension extension : extensions) {
+
+					extension.onTrimMemory (level);
+
+				}
 
 			}
 
