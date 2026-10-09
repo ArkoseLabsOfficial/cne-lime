@@ -278,7 +278,7 @@ public class GameActivity extends SDLActivity {
 					break;
 
 				case "never":
-					getWindow().getAttributes().layoutInDisplay_cutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
+					getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
 					break;
 
 				case "shortEdges":
