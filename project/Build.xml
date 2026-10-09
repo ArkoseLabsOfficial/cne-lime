@@ -35,7 +35,7 @@
 	<!-- <set name="LIME_VPX" value="1" />
 	<set name="LIME_WEBM" value="1" /> -->
 	<set name="LIME_ZLIB" value="1" />
-	<set name="LIME_IMGUI" value="1" if="LIME_SDL" />
+	<set name="LIME_IMGUI" value="1" if="LIME_SDL" unless="mobile" /> <!-- is this really needed? -->
 
 	<set name="OUTPUT_DIR" value="../ndll" unless="OUTPUT_DIR" />
 	<set name="NATIVE_TOOLKIT_PATH" value="lib" unless="NATIVE_TOOLKIT_PATH" />
