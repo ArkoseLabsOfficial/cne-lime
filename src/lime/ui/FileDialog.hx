@@ -29,6 +29,8 @@ import sys.io.File;
 import js.html.Blob;
 #end
 
+using StringTools;
+
 /**
 	Simple file dialog used for asking user where to save a file, or select files to open.
 
