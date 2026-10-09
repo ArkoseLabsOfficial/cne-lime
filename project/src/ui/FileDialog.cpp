@@ -12,10 +12,12 @@
 	#include "../backend/sdl/SDLWindow.h"
 	#include <SDL3/SDL.h>
 
-	#if __has_include(<SDL3/SDL_filedialog.h>)
-		#include <SDL3/SDL_filedialog.h>
-	#elif __has_include(<SDL3/SDL_dialog.h>)
-		#include <SDL3/SDL_dialog.h>
+	#if defined(__has_include)
+		#if __has_include(<SDL3/SDL_filedialog.h>)
+			#include <SDL3/SDL_filedialog.h>
+		#elif __has_include(<SDL3/SDL_dialog.h>)
+			#include <SDL3/SDL_dialog.h>
+		#endif
 	#endif
 
 	#if defined(SDL_PROP_FILE_DIALOG_WINDOW_POINTER)
@@ -31,12 +33,37 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 
 namespace lime {
 
 
 	#ifdef LIME_FILE_DIALOG_SDL3_IMPL
+
+	template <class F, class... Args>
+	static bool CheckedCallImpl(std::true_type, F&& f, Args&&... args)
+	{
+		f(std::forward<Args>(args)...);
+		return true;
+	}
+
+
+	template <class F, class... Args>
+	static bool CheckedCallImpl(std::false_type, F&& f, Args&&... args)
+	{
+		return static_cast<bool>(f(std::forward<Args>(args)...));
+	}
+
+
+	template <class F, class... Args>
+	static bool CheckedCall(F&& f, Args&&... args)
+	{
+		typedef decltype(f(std::forward<Args>(args)...)) Ret;
+		return CheckedCallImpl(std::is_void<Ret>(), std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
 
 	struct FileDialogData
 	{
@@ -130,13 +157,9 @@ namespace lime {
 			{
 				data->callback(mainData->filelist, mainData->filecount, mainData->filter);
 			}
-
-			FreeFilters(data->filters);
-			delete data;
 		}
 
-		FreeFilelist(mainData->filelist, mainData->filecount);
-		delete mainData;
+		CleanupMainThreadData(mainData);
 	}
 
 
@@ -185,7 +208,7 @@ namespace lime {
 			}
 		}
 
-		if (!SDL_RunOnMainThread(mainThreadCallback, mainData, false))
+		if (!CheckedCall(SDL_RunOnMainThread, mainThreadCallback, mainData, false))
 		{
 			CleanupMainThreadData(mainData);
 		}
@@ -227,15 +250,19 @@ namespace lime {
 	{
 		#ifdef LIME_FILE_DIALOG_SDL3_IMPL
 
+		auto* dialogData = new FileDialogData;
+		dialogData->callback = std::move(callback);
+
 		SDL_PropertiesID props = SDL_CreateProperties();
 
 		if (props == 0)
 		{
-			if (callback)
+			if (dialogData->callback)
 			{
-				callback(nullptr, 0, -1);
+				dialogData->callback(nullptr, 0, -1);
 			}
 
+			delete dialogData;
 			return;
 		}
 
@@ -257,24 +284,20 @@ namespace lime {
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
 
-		auto* dialogData = new FileDialogData;
-		dialogData->callback = std::move(callback);
-
-		bool shown = SDL_ShowFileDialogWithProperties(
+		if (!CheckedCall(
+			SDL_ShowFileDialogWithProperties,
 			SDL_FILEDIALOG_OPENFOLDER,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
-		);
-
-		if (!shown)
+		))
 		{
 			if (dialogData->callback)
 			{
 				dialogData->callback(nullptr, 0, -1);
 			}
 
-			CleanupDialogData(dialogData);
+			delete dialogData;
 		}
 
 		SDL_DestroyProperties(props);
@@ -355,14 +378,13 @@ namespace lime {
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
 
-		bool shown = SDL_ShowFileDialogWithProperties(
+		if (!CheckedCall(
+			SDL_ShowFileDialogWithProperties,
 			SDL_FILEDIALOG_OPENFILE,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
-		);
-
-		if (!shown)
+		))
 		{
 			FreeFilters(dialogData->filters);
 
@@ -449,14 +471,13 @@ namespace lime {
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
 
-		bool shown = SDL_ShowFileDialogWithProperties(
+		if (!CheckedCall(
+			SDL_ShowFileDialogWithProperties,
 			SDL_FILEDIALOG_SAVEFILE,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
-		);
-
-		if (!shown)
+		))
 		{
 			FreeFilters(dialogData->filters);
 
