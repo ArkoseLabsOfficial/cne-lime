@@ -1,13 +1,12 @@
 #include <ui/FileDialog.h>
 
-/*
-	SDL3 native file dialogs are only used on desktop.
+#if defined(LIME_SDL) \
+	&& !defined(ANDROID) \
+	&& !defined(IPHONE) \
+	&& !defined(IPHONEOS) \
+	&& !defined(HX_IOS) \
+	&& (defined(HX_WINDOWS) || defined(HX_LINUX) || (defined(HX_MACOS) && !defined(HX_IOS)))
 
-	Android/iOS should use the Lime Java/JNI or Objective-C++ mobile file dialog
-	implementation instead. Compiling the SDL3 file dialog path on mobile can
-	stall the NDK/Xcode build depending on the SDL fork/version.
-*/
-#if defined(LIME_SDL) && (defined(HX_WINDOWS) || defined(HX_MACOS) || defined(HX_LINUX))
 	#define LIME_FILE_DIALOG_SDL3_DESKTOP 1
 
 	#include "../backend/sdl/SDLWindow.h"
@@ -18,6 +17,11 @@
 	#elif __has_include(<SDL3/SDL_dialog.h>)
 		#include <SDL3/SDL_dialog.h>
 	#endif
+
+	#if defined(SDL_PROP_FILE_DIALOG_WINDOW_POINTER)
+		#define LIME_FILE_DIALOG_SDL3_IMPL 1
+	#endif
+
 #endif
 
 #include <stdio.h>
@@ -32,7 +36,7 @@
 namespace lime {
 
 
-	#ifdef LIME_FILE_DIALOG_SDL3_DESKTOP
+	#ifdef LIME_FILE_DIALOG_SDL3_IMPL
 
 	struct FileDialogData
 	{
@@ -50,42 +54,89 @@ namespace lime {
 	};
 
 
+	static void FreeFilters(std::vector<SDL_DialogFileFilter>& filters)
+	{
+		for (auto& f : filters)
+		{
+			if (f.name != nullptr)
+			{
+				SDL_free((void*)f.name);
+				f.name = nullptr;
+			}
+
+			if (f.pattern != nullptr)
+			{
+				SDL_free((void*)f.pattern);
+				f.pattern = nullptr;
+			}
+		}
+
+		filters.clear();
+	}
+
+
+	static void FreeFilelist(const char** filelist, int filecount)
+	{
+		if (filelist != nullptr)
+		{
+			for (int i = 0; i < filecount; ++i)
+			{
+				if (filelist[i] != nullptr)
+				{
+					SDL_free((void*)filelist[i]);
+				}
+			}
+
+			SDL_free((void*)filelist);
+		}
+	}
+
+
+	static void CleanupDialogData(FileDialogData* data)
+	{
+		if (data != nullptr)
+		{
+			FreeFilters(data->filters);
+			delete data;
+		}
+	}
+
+
+	static void CleanupMainThreadData(MainThreadCallbackData* mainData)
+	{
+		if (mainData != nullptr)
+		{
+			FreeFilelist(mainData->filelist, mainData->filecount);
+			CleanupDialogData(mainData->dialogData);
+			delete mainData;
+		}
+	}
+
+
 	static void SDLCALL mainThreadCallback(void* userdata)
 	{
 		auto* mainData = static_cast<MainThreadCallbackData*>(userdata);
 
-		if (mainData)
+		if (mainData == nullptr)
 		{
-			auto* data = mainData->dialogData;
+			return;
+		}
 
-			if (data)
+		auto* data = mainData->dialogData;
+
+		if (data != nullptr)
+		{
+			if (data->callback)
 			{
-				if (data->callback)
-				{
-					data->callback(mainData->filelist, mainData->filecount, mainData->filter);
-				}
-
-				for (auto& f : data->filters)
-				{
-					SDL_free((void*)f.name);
-					SDL_free((void*)f.pattern);
-				}
-
-				if (mainData->filelist)
-				{
-					for (int i = 0; i < mainData->filecount; ++i)
-					{
-						SDL_free((void*)mainData->filelist[i]);
-					}
-
-					SDL_free((void*)mainData->filelist);
-				}
-
-				delete data;
+				data->callback(mainData->filelist, mainData->filecount, mainData->filter);
 			}
 
-			delete mainData;
+			FreeFilters(data->filters);
+			delete data;
 		}
+
+		FreeFilelist(mainData->filelist, mainData->filecount);
+		delete mainData;
 	}
 
 
@@ -93,28 +144,38 @@ namespace lime {
 	{
 		auto* data = static_cast<FileDialogData*>(userdata);
 
-		if (data)
+		if (data == nullptr)
 		{
-			int filecount = 0;
+			return;
+		}
 
-			if (filelist && (*filelist))
+		int filecount = 0;
+
+		if (filelist != nullptr && filelist[0] != nullptr)
+		{
+			while (filelist[filecount] != nullptr)
 			{
-				while (filelist[filecount] != nullptr)
-				{
-					filecount++;
-				}
+				filecount++;
 			}
+		}
 
-			auto* mainData = new MainThreadCallbackData;
+		auto* mainData = new MainThreadCallbackData;
 
-			mainData->filecount = filecount;
-			mainData->filter = filter;
-			mainData->dialogData = data;
+		mainData->filecount = filecount;
+		mainData->filter = filter;
+		mainData->dialogData = data;
+		mainData->filelist = nullptr;
 
-			if (filecount > 0 && filelist)
+		if (filecount > 0 && filelist != nullptr)
+		{
+			mainData->filelist = static_cast<const char**>(SDL_malloc((filecount + 1) * sizeof(const char*)));
+
+			if (mainData->filelist == nullptr)
 			{
-				mainData->filelist = static_cast<const char**>(SDL_malloc((filecount + 1) * sizeof(const char*)));
-
+				mainData->filecount = 0;
+			}
+			else
+			{
 				for (int i = 0; i < filecount; ++i)
 				{
 					mainData->filelist[i] = SDL_strdup(filelist[i]);
@@ -122,12 +183,11 @@ namespace lime {
 
 				mainData->filelist[filecount] = nullptr;
 			}
-			else
-			{
-				mainData->filelist = nullptr;
-			}
+		}
 
-			SDL_RunOnMainThread(mainThreadCallback, mainData, false);
+		if (!SDL_RunOnMainThread(mainThreadCallback, mainData, false))
+		{
+			CleanupMainThreadData(mainData);
 		}
 	}
 
@@ -146,8 +206,8 @@ namespace lime {
 		for (int i = 0; i < count; ++i)
 		{
 			SDL_DialogFileFilter f;
-			f.name = SDL_strdup(names && names[i] ? names[i] : "");
-			f.pattern = SDL_strdup(patterns && patterns[i] ? patterns[i] : "*");
+			f.name = SDL_strdup(names != nullptr && names[i] != nullptr ? names[i] : "");
+			f.pattern = SDL_strdup(patterns != nullptr && patterns[i] != nullptr ? patterns[i] : "*");
 			filters.push_back(f);
 		}
 
@@ -165,7 +225,7 @@ namespace lime {
 		bool allowMultiple
 	)
 	{
-		#ifdef LIME_FILE_DIALOG_SDL3_DESKTOP
+		#ifdef LIME_FILE_DIALOG_SDL3_IMPL
 
 		SDL_PropertiesID props = SDL_CreateProperties();
 
@@ -182,17 +242,17 @@ namespace lime {
 		SDL_SetPointerProperty(
 			props,
 			SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-			window ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
+			window != nullptr ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
 		);
 
-		if (defaultPath)
+		if (defaultPath != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, defaultPath);
 		}
 
 		SDL_SetBooleanProperty(props, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, allowMultiple);
 
-		if (title)
+		if (title != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
@@ -200,12 +260,22 @@ namespace lime {
 		auto* dialogData = new FileDialogData;
 		dialogData->callback = std::move(callback);
 
-		(void)SDL_ShowFileDialogWithProperties(
+		bool shown = SDL_ShowFileDialogWithProperties(
 			SDL_FILEDIALOG_OPENFOLDER,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
 		);
+
+		if (!shown)
+		{
+			if (dialogData->callback)
+			{
+				dialogData->callback(nullptr, 0, -1);
+			}
+
+			CleanupDialogData(dialogData);
+		}
 
 		SDL_DestroyProperties(props);
 
@@ -231,7 +301,7 @@ namespace lime {
 		bool allowMultiple
 	)
 	{
-		#ifdef LIME_FILE_DIALOG_SDL3_DESKTOP
+		#ifdef LIME_FILE_DIALOG_SDL3_IMPL
 
 		auto* dialogData = new FileDialogData;
 		dialogData->callback = std::move(callback);
@@ -241,11 +311,7 @@ namespace lime {
 
 		if (props == 0)
 		{
-			for (auto& f : dialogData->filters)
-			{
-				SDL_free((void*)f.name);
-				SDL_free((void*)f.pattern);
-			}
+			FreeFilters(dialogData->filters);
 
 			if (dialogData->callback)
 			{
@@ -274,27 +340,39 @@ namespace lime {
 		SDL_SetPointerProperty(
 			props,
 			SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-			window ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
+			window != nullptr ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
 		);
 
-		if (defaultPath)
+		if (defaultPath != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, defaultPath);
 		}
 
 		SDL_SetBooleanProperty(props, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, allowMultiple);
 
-		if (title)
+		if (title != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
 
-		(void)SDL_ShowFileDialogWithProperties(
+		bool shown = SDL_ShowFileDialogWithProperties(
 			SDL_FILEDIALOG_OPENFILE,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
 		);
+
+		if (!shown)
+		{
+			FreeFilters(dialogData->filters);
+
+			if (dialogData->callback)
+			{
+				dialogData->callback(nullptr, 0, -1);
+			}
+
+			delete dialogData;
+		}
 
 		SDL_DestroyProperties(props);
 
@@ -319,7 +397,7 @@ namespace lime {
 		const char* defaultPath
 	)
 	{
-		#ifdef LIME_FILE_DIALOG_SDL3_DESKTOP
+		#ifdef LIME_FILE_DIALOG_SDL3_IMPL
 
 		auto* dialogData = new FileDialogData;
 		dialogData->callback = std::move(callback);
@@ -329,11 +407,7 @@ namespace lime {
 
 		if (props == 0)
 		{
-			for (auto& f : dialogData->filters)
-			{
-				SDL_free((void*)f.name);
-				SDL_free((void*)f.pattern);
-			}
+			FreeFilters(dialogData->filters);
 
 			if (dialogData->callback)
 			{
@@ -362,25 +436,37 @@ namespace lime {
 		SDL_SetPointerProperty(
 			props,
 			SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-			window ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
+			window != nullptr ? static_cast<SDLWindow*>(window)->sdlWindow : nullptr
 		);
 
-		if (defaultPath)
+		if (defaultPath != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, defaultPath);
 		}
 
-		if (title)
+		if (title != nullptr)
 		{
 			SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
 		}
 
-		(void)SDL_ShowFileDialogWithProperties(
+		bool shown = SDL_ShowFileDialogWithProperties(
 			SDL_FILEDIALOG_SAVEFILE,
 			dialogFileCallbackThunk,
 			dialogData,
 			props
 		);
+
+		if (!shown)
+		{
+			FreeFilters(dialogData->filters);
+
+			if (dialogData->callback)
+			{
+				dialogData->callback(nullptr, 0, -1);
+			}
+
+			delete dialogData;
+		}
 
 		SDL_DestroyProperties(props);
 
