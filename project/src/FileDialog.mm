@@ -1,21 +1,24 @@
-#ifdef IPHONE
+#if defined(IPHONE) || defined(IPHONEOS) || defined(HX_IOS)
 
 #import <UIKit/UIKit.h>
 
-#include <ui/FileDialog.h>
 #include <ui/FileDialogEvent.h>
 
 #include <system/CFFI.h>
 #include <system/ValuePointer.h>
+#include <hx/CFFIAPI.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <string>
 #include <vector>
 
+
 using namespace lime;
 
+
 static NSMutableArray* g_fileDialogObservers = nil;
+
 
 @interface FileDialogObserver : NSObject <UIDocumentPickerDelegate>
 
@@ -27,44 +30,56 @@ static NSMutableArray* g_fileDialogObservers = nil;
 
 @end
 
+
 @implementation FileDialogObserver
 
-- (void)documentPicker:(UIDocumentPickerViewController*)controller
-	didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
 
+- (void)documentPicker:(UIDocumentPickerViewController*)controller
+	didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
+{
 	[self handlePickedURLs:urls];
 }
 
-- (void)documentPicker:(UIDocumentPickerViewController*)controller
-	didPickDocumentURLs:(NSArray<NSURL*>*)urls {
 
+- (void)documentPicker:(UIDocumentPickerViewController*)controller
+	didPickDocumentURLs:(NSArray<NSURL*>*)urls
+{
 	// Older iOS compatibility.
 	[self handlePickedURLs:urls];
 }
 
-- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller {
 
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller
+{
 	int cancelType = self.saveMode ? FILE_SAVE_CANCELED : FILE_OPEN_CANCELED;
 	[self dispatchEvent:cancelType file:""];
 	[self removeFromGlobals];
 }
 
-- (void)handlePickedURLs:(NSArray<NSURL*>*)urls {
 
-	if (urls == nil || urls.count == 0) {
-
+- (void)handlePickedURLs:(NSArray<NSURL*>*)urls
+{
+	if (urls == nil || urls.count == 0)
+	{
 		int cancelType = self.saveMode ? FILE_SAVE_CANCELED : FILE_OPEN_CANCELED;
 		[self dispatchEvent:cancelType file:""];
 		[self removeFromGlobals];
 		return;
-
 	}
 
-	if (self.saveMode) {
-
+	if (self.saveMode)
+	{
 		NSURL* destination = urls.firstObject;
 
-		if (![destination startAccessingSecurityScopedResource]) {
+		if (destination == nil)
+		{
+			[self dispatchEvent:FILE_SAVE_ERROR file:""];
+			[self removeFromGlobals];
+			return;
+		}
+
+		if (![destination startAccessingSecurityScopedResource])
+		{
 			[self dispatchEvent:FILE_SAVE_ERROR file:""];
 			[self removeFromGlobals];
 			return;
@@ -73,7 +88,8 @@ static NSMutableArray* g_fileDialogObservers = nil;
 		NSError* error = nil;
 		NSFileManager* fm = [NSFileManager defaultManager];
 
-		if ([fm fileExistsAtPath:destination.path]) {
+		if ([fm fileExistsAtPath:destination.path])
+		{
 			[fm removeItemAtURL:destination error:&error];
 			error = nil;
 		}
@@ -83,9 +99,12 @@ static NSMutableArray* g_fileDialogObservers = nil;
 
 		[destination stopAccessingSecurityScopedResource];
 
-		if (ok) {
+		if (ok)
+		{
 			[self dispatchEvent:FILE_SAVE_SUCCESS file:destination.path.UTF8String];
-		} else {
+		}
+		else
+		{
 			[self dispatchEvent:FILE_SAVE_ERROR file:""];
 		}
 
@@ -93,20 +112,22 @@ static NSMutableArray* g_fileDialogObservers = nil;
 		return;
 	}
 
-	if (self.multiple) {
-
+	if (self.multiple)
+	{
 		NSMutableString* joined = [NSMutableString string];
 		BOOL first = YES;
 
-		for (NSURL* url in urls) {
-
+		for (NSURL* url in urls)
+		{
 			NSString* tempPath = [self copyURLToTemp:url fallbackName:nil];
 
-			if (tempPath == nil) {
+			if (tempPath == nil)
+			{
 				continue;
 			}
 
-			if (!first) {
+			if (!first)
+			{
 				[joined appendString:@"\n"];
 			}
 
@@ -114,20 +135,27 @@ static NSMutableArray* g_fileDialogObservers = nil;
 			first = NO;
 		}
 
-		if (first) {
+		if (first)
+		{
 			[self dispatchEvent:FILE_OPEN_ERROR file:""];
-		} else {
+		}
+		else
+		{
 			[self dispatchEvent:self.eventType file:joined.UTF8String];
 		}
 
-	} else {
-
+	}
+	else
+	{
 		NSURL* url = urls.firstObject;
 		NSString* tempPath = [self copyURLToTemp:url fallbackName:nil];
 
-		if (tempPath == nil) {
+		if (tempPath == nil)
+		{
 			[self dispatchEvent:FILE_OPEN_ERROR file:""];
-		} else {
+		}
+		else
+		{
 			[self dispatchEvent:self.eventType file:tempPath.UTF8String];
 		}
 
@@ -136,26 +164,33 @@ static NSMutableArray* g_fileDialogObservers = nil;
 	[self removeFromGlobals];
 }
 
-- (NSString*)copyURLToTemp:(NSURL*)url fallbackName:(NSString*)fallbackName {
 
-	if (url == nil) {
+- (NSString*)copyURLToTemp:(NSURL*)url fallbackName:(NSString*)fallbackName
+{
+	if (url == nil)
+	{
 		return nil;
 	}
 
-	if (![url startAccessingSecurityScopedResource]) {
+	if (![url startAccessingSecurityScopedResource])
+	{
 		return nil;
 	}
 
 	NSString* name = url.lastPathComponent;
 
-	if (name == nil || name.length == 0) {
+	if (name == nil || name.length == 0)
+	{
 		name = fallbackName != nil ? fallbackName : [[NSUUID UUID] UUIDString];
 	}
 
 	// Remove SAF colon-separated junk if present.
-	if ([name rangeOfString:@":"].location != NSNotFound) {
+	if ([name rangeOfString:@":"].location != NSNotFound)
+	{
 		NSArray* parts = [name componentsSeparatedByString:@":"];
-		if (parts.count > 1) {
+
+		if (parts != nil && parts.count > 1)
+		{
 			name = parts.lastObject;
 		}
 	}
@@ -169,8 +204,8 @@ static NSMutableArray* g_fileDialogObservers = nil;
 
 	int counter = 1;
 
-	while ([fm fileExistsAtPath:destPath]) {
-
+	while ([fm fileExistsAtPath:destPath])
+	{
 		NSString* base = name.pathExtension.length > 0 ? name.stringByDeletingPathExtension : name;
 		NSString* ext = name.pathExtension;
 
@@ -183,7 +218,8 @@ static NSMutableArray* g_fileDialogObservers = nil;
 		counter++;
 	}
 
-	if ([fm fileExistsAtPath:destPath]) {
+	if ([fm fileExistsAtPath:destPath])
+	{
 		[fm removeItemAtURL:destURL error:nil];
 	}
 
@@ -194,13 +230,14 @@ static NSMutableArray* g_fileDialogObservers = nil;
 	return ok ? destPath : nil;
 }
 
-- (void)dispatchEvent:(int)type file:(const char*)file {
 
+- (void)dispatchEvent:(int)type file:(const char*)file
+{
 	FileDialogEvent event;
 	event.id = self.handle;
 	event.type = (FileDialogEventType)type;
 
-	char* copy = strdup(file != nil ? file : "");
+	char* copy = strdup(file != nullptr ? file : "");
 	event.file = (vbyte*)copy;
 
 	FileDialogEvent::Dispatch(&event);
@@ -209,23 +246,30 @@ static NSMutableArray* g_fileDialogObservers = nil;
 	event.file = nullptr;
 }
 
-- (void)removeFromGlobals {
 
-	if (g_fileDialogObservers != nil) {
+- (void)removeFromGlobals
+{
+	if (g_fileDialogObservers != nil)
+	{
 		[g_fileDialogObservers removeObject:self];
 	}
 }
 
+
 @end
 
-static FileDialogObserver* findObserver(int handle) {
 
-	if (g_fileDialogObservers == nil) {
+static FileDialogObserver* findObserver(int handle)
+{
+	if (g_fileDialogObservers == nil)
+	{
 		return nil;
 	}
 
-	for (FileDialogObserver* observer in g_fileDialogObservers) {
-		if (observer.handle == handle) {
+	for (FileDialogObserver* observer in g_fileDialogObservers)
+	{
+		if (observer.handle == handle)
+		{
 			return observer;
 		}
 	}
@@ -233,9 +277,11 @@ static FileDialogObserver* findObserver(int handle) {
 	return nil;
 }
 
-static FileDialogObserver* createObserver(int handle) {
 
-	if (g_fileDialogObservers == nil) {
+static FileDialogObserver* createObserver(int handle)
+{
+	if (g_fileDialogObservers == nil)
+	{
 		g_fileDialogObservers = [[NSMutableArray alloc] init];
 	}
 
@@ -247,130 +293,158 @@ static FileDialogObserver* createObserver(int handle) {
 	return observer;
 }
 
-static UIViewController* topViewController(void) {
 
+static UIViewController* topViewController(void)
+{
 	UIWindow* window = nil;
 
-	if (@available(iOS 13.0, *)) {
-
-		for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
-
-			if (scene.activationState != UISceneActivationStateForegroundActive) {
+	if (@available(iOS 13.0, *))
+	{
+		for (UIScene* scene in UIApplication.sharedApplication.connectedScenes)
+		{
+			if (scene.activationState != UISceneActivationStateForegroundActive)
+			{
 				continue;
 			}
 
-			if (![scene isKindOfClass:[UIWindowScene class]]) {
+			if (![scene isKindOfClass:[UIWindowScene class]])
+			{
 				continue;
 			}
 
 			UIWindowScene* windowScene = (UIWindowScene*)scene;
 
-			for (UIWindow* w in windowScene.windows) {
-				if (w.isKeyWindow) {
+			for (UIWindow* w in windowScene.windows)
+			{
+				if (w.isKeyWindow)
+				{
 					window = w;
 					break;
 				}
 			}
 
-			if (window != nil) {
+			if (window != nil)
+			{
 				break;
 			}
 		}
 	}
 
-	if (window == nil) {
+	if (window == nil)
+	{
 		window = UIApplication.sharedApplication.keyWindow;
 	}
 
 	UIViewController* controller = window.rootViewController;
 
-	while (controller.presentedViewController != nil) {
+	while (controller.presentedViewController != nil)
+	{
 		controller = controller.presentedViewController;
 	}
 
 	return controller;
 }
 
-static void presentFileDialog(int handle, BOOL openMode, BOOL multiple, BOOL saveMode,
-	NSString* savePath, int eventType) {
 
-	FileDialogObserver* observer = createObserver(handle);
-	observer.eventType = eventType;
-	observer.multiple = multiple;
-	observer.saveMode = saveMode;
-	observer.savePath = savePath;
+static void presentFileDialog(
+	int handle,
+	BOOL openMode,
+	BOOL multiple,
+	BOOL saveMode,
+	NSString* savePath,
+	int eventType
+)
+{
+	@autoreleasepool
+	{
+		FileDialogObserver* observer = createObserver(handle);
+		observer.eventType = eventType;
+		observer.multiple = multiple;
+		observer.saveMode = saveMode;
+		observer.savePath = savePath;
 
-	UIDocumentPickerViewController* picker = nil;
+		UIDocumentPickerViewController* picker = nil;
 
-	if (saveMode) {
-
-		NSURL* url = [NSURL fileURLWithPath:savePath];
-		picker = [[UIDocumentPickerViewController alloc] initWithForExportingURLs:@[url] asCopy:YES];
-
-	} else {
-
-		NSArray<NSString*>* documentTypes = multiple
-			? @[@"public.item", @"public.folder"]
-			: @[@"public.item"];
-
-		picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:documentTypes
-																			inMode:UIDocumentPickerModeOpen];
-
-		if (@available(iOS 11.0, *)) {
-			picker.allowsMultipleSelection = multiple;
+		if (saveMode)
+		{
+			NSURL* url = [NSURL fileURLWithPath:savePath];
+			picker = [[UIDocumentPickerViewController alloc] initWithForExportingURLs:@[url] asCopy:YES];
 		}
-	}
+		else
+		{
+			NSArray<NSString*>* documentTypes = multiple
+				? @[@"public.item", @"public.folder"]
+				: @[@"public.item"];
 
-	picker.delegate = observer;
+			picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:documentTypes
+																				inMode:UIDocumentPickerModeOpen];
 
-	UIViewController* vc = topViewController();
+			if (@available(iOS 11.0, *))
+			{
+				picker.allowsMultipleSelection = multiple;
+			}
+		}
 
-	if (vc != nil) {
-		[vc presentViewController:picker animated:YES completion:nil];
-	} else {
+		picker.delegate = observer;
 
-		int errorType = saveMode ? FILE_SAVE_ERROR : FILE_OPEN_ERROR;
-		observer.eventType = errorType;
-		[observer dispatchEvent:errorType file:""];
-		[observer removeFromGlobals];
+		UIViewController* vc = topViewController();
+
+		if (vc != nil)
+		{
+			[vc presentViewController:picker animated:YES completion:nil];
+		}
+		else
+		{
+			int errorType = saveMode ? FILE_SAVE_ERROR : FILE_OPEN_ERROR;
+			observer.eventType = errorType;
+			[observer dispatchEvent:errorType file:""];
+			[observer removeFromGlobals];
+		}
 	}
 }
 
+
 extern "C" {
 
-	value lime_file_dialog_create_ios() {
 
+	value lime_file_dialog_create_ios()
+	{
 		static int nextHandle = 1;
 		return alloc_int(nextHandle++);
 	}
 
-	value lime_file_dialog_open_ios(value inHandle) {
 
+	value lime_file_dialog_open_ios(value inHandle)
+	{
 		int handle = val_int(inHandle);
 		presentFileDialog(handle, YES, NO, NO, nil, FILE_OPEN_SUCCESS);
 		return val_null;
 	}
 
-	value lime_file_dialog_browse_select_ios(value inHandle) {
 
+	value lime_file_dialog_browse_select_ios(value inHandle)
+	{
 		int handle = val_int(inHandle);
 		presentFileDialog(handle, YES, NO, NO, nil, FILE_BROWSE_SELECT);
 		return val_null;
 	}
 
-	value lime_file_dialog_browse_select_multiple_ios(value inHandle) {
 
+	value lime_file_dialog_browse_select_multiple_ios(value inHandle)
+	{
 		int handle = val_int(inHandle);
 		presentFileDialog(handle, YES, YES, NO, nil, FILE_BROWSE_SELECT_MULTIPLE);
 		return val_null;
 	}
 
-	value lime_file_dialog_save_ios(value inHandle, value inPath) {
 
+	value lime_file_dialog_save_ios(value inHandle, value inPath)
+	{
 		int handle = val_int(inHandle);
 		const char* path = val_string(inPath);
 
-		if (path == nullptr) {
+		if (path == nullptr)
+		{
 			return val_null;
 		}
 
@@ -378,12 +452,14 @@ extern "C" {
 		return val_null;
 	}
 
-	value lime_file_dialog_browse_save_ios(value inHandle, value inPath) {
 
+	value lime_file_dialog_browse_save_ios(value inHandle, value inPath)
+	{
 		int handle = val_int(inHandle);
 		const char* path = val_string(inPath);
 
-		if (path == nullptr) {
+		if (path == nullptr)
+		{
 			return val_null;
 		}
 
@@ -391,13 +467,16 @@ extern "C" {
 		return val_null;
 	}
 
-	value lime_file_dialog_manager_register_ios(value inCallback, value inEventObject) {
 
-		if (FileDialogEvent::callback != nullptr) {
+	value lime_file_dialog_manager_register_ios(value inCallback, value inEventObject)
+	{
+		if (FileDialogEvent::callback != nullptr)
+		{
 			delete FileDialogEvent::callback;
 		}
 
-		if (FileDialogEvent::eventObject != nullptr) {
+		if (FileDialogEvent::eventObject != nullptr)
+		{
 			delete FileDialogEvent::eventObject;
 		}
 
@@ -406,6 +485,7 @@ extern "C" {
 
 		return val_null;
 	}
+
 
 }
 
@@ -416,5 +496,4 @@ DEFINE_PRIM(lime_file_dialog_browse_select_multiple_ios, 1);
 DEFINE_PRIM(lime_file_dialog_save_ios, 2);
 DEFINE_PRIM(lime_file_dialog_browse_save_ios, 2);
 DEFINE_PRIM(lime_file_dialog_manager_register_ios, 2);
-
 #endif

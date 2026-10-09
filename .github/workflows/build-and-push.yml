@@ -4,19 +4,15 @@ on: workflow_dispatch
 jobs:
   android:
     uses: ./.github/workflows/android.yml
-  ios:
-    uses: ./.github/workflows/ios.yml
   linux:
     uses: ./.github/workflows/linux.yml
-  mac:
-    uses: ./.github/workflows/mac.yml
   windows:
     uses: ./.github/workflows/windows.yml
   miscellaneous:
     uses: ./.github/workflows/miscellaneous.yml
 
   publisher:
-    needs: [android, ios, linux, mac, windows, miscellaneous]
+    needs: [android, linux, windows, miscellaneous]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,12 +34,6 @@ jobs:
           name: Android-NDLL
           path: ndll/Android
 
-      - name: Download iPhone-NDLL artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: iPhone-NDLL
-          path: ndll/iPhone
-
       - name: Download Linux64-NDLL artifact
         uses: actions/download-artifact@v8
         with:
@@ -55,18 +45,6 @@ jobs:
         with:
           name: Linux64-Hashlink
           path: templates/bin/hl/Linux64
-
-      - name: Download Mac64-NDLL artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: Mac64-NDLL
-          path: ndll/Mac64
-
-      - name: Download MacArm64-NDLL artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: MacArm64-NDLL
-          path: ndll/MacArm64
 
       - name: Download Windows64-NDLL artifact
         uses: actions/download-artifact@v8
@@ -98,7 +76,7 @@ jobs:
           USER_INFO=$(curl -s "https://api.github.com/users/$USERACTOR")
           USERID=$(echo "$USER_INFO" | jq -r '.id')
           USERNAME=$(echo "$USER_INFO" | jq -r '.name')
-          
+
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add -f ndll
